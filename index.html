@@ -1,0 +1,1238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>ChemiCrush - Neon Saga</title>
+
+  <style>
+    :root {
+      --bg-dark: #0f0f15;
+      --font-main: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      --neon-blue: #00f3ff;
+      --neon-pink: #ff66b2;
+      --neon-gold: #ffd700;
+      --neon-accent: var(--neon-blue);
+    }
+
+    * { box-sizing: border-box; user-select: none; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      margin: 0; padding: 0;
+      background-color: var(--bg-dark);
+      background-image: radial-gradient(circle at 50% 50%, #1a1a2e 0%, #000000 100%);
+      color: white; font-family: var(--font-main);
+      overflow: hidden; height: 100vh;
+      display: flex; flex-direction: column; align-items: center;
+      touch-action: none;
+    }
+
+    /* --- BACKGROUND --- */
+    .lab-background-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+    .lab-svg { width: 100%; height: 100%; object-fit: cover; opacity: 0.6; }
+    .liquid-anim { animation: float-liquid 6s ease-in-out infinite; }
+    @keyframes float-liquid { 0%,100%{transform:translateY(0) scale(1);} 50%{transform:translateY(-5px) scale(1.02);} }
+
+    /* --- LAYOUT --- */
+    .view-container { width: 100%; height: 100%; display: none; flex-direction: column; align-items: center; position: relative; z-index: 10; }
+    .view-container.active { display: flex; }
+
+    /* --- MAP --- */
+    #map-view { overflow-y: auto; padding-bottom: 50px; background: rgba(0,0,0,0.6); backdrop-filter: blur(5px); width: 100%; max-width: 600px; height: 100%; }
+    .map-header {
+      position: sticky; top: 0; width: 100%; background: rgba(20,20,30,0.95); padding: 15px; z-index: 100;
+      border-bottom: 2px solid var(--neon-blue); box-shadow: 0 5px 20px black;
+      display: flex; flex-direction: column; gap:10px;
+    }
+    .header-top { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+    .player-stats-bar { width: 100%; background: rgba(255,255,255,0.1); border-radius: 8px; padding: 5px; display: flex; justify-content: center; font-size: 0.9rem; color: #ccc; }
+    .map-content { position: relative; width: 100%; min-height: 1500px; padding-top: 50px; display: flex; flex-direction: column-reverse; align-items: center; }
+    #map-svg-layer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+
+    .map-node { width: 70px; height: 70px; border-radius: 50%; margin: 30px 0; display: flex; justify-content: center; align-items: center; font-weight: bold; font-size: 1.5rem; position: relative; z-index: 2; cursor: pointer; border: 3px solid #666; background: #333; color: #555; transition: transform 0.2s; }
+    .map-node:nth-child(odd) { transform: translateX(-60px); }
+    .map-node:nth-child(even) { transform: translateX(60px); }
+    .map-node.unlocked { background: linear-gradient(135deg, #00f3ff, #0066cc); border-color: white; color: white; box-shadow: 0 0 15px #00f3ff; text-shadow: 0 1px 2px black; }
+    .map-node.current { background: linear-gradient(135deg, #ff0055, #ff66b2); border-color: white; animation: pulse-node 1.5s infinite; transform: scale(1.2) translateX(var(--offset)); z-index: 5; }
+    .map-node.locked { background: #1a1a1a; border-color: #333; cursor: default; }
+    .map-node.locked::after { content: '🔒'; font-size: 2rem; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); filter: drop-shadow(0 0 5px gold); opacity: 1; }
+    @keyframes pulse-node { 0%{box-shadow:0 0 0 0 rgba(255,0,85,0.7);} 70%{box-shadow:0 0 0 15px rgba(255,0,85,0);} 100%{box-shadow:0 0 0 0 rgba(255,0,85,0);} }
+
+    /* --- GAME UI --- */
+    header { width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 10px; background: rgba(20,20,30,0.9); border-bottom: 2px solid #00f3ff; box-shadow: 0 4px 20px rgba(0,243,255,0.2); }
+    .logo { font-size: 1.5rem; font-weight: 800; color: white; text-shadow: 0 0 10px #00f3ff; }
+    .logo span { color: #00f3ff; }
+    .stats-bar { display: flex; gap: 15px; font-size: 0.9rem; }
+    .stat-box { display: flex; flex-direction: column; align-items: center; }
+    .stat-label { font-size: 0.7rem; color: #aaa; text-transform: uppercase; }
+    .stat-value { font-weight: bold; font-size: 1.1rem; }
+
+    #board-wrapper {
+      position: relative; width: 100%; aspect-ratio: 1; max-width: 500px;
+      background: rgba(10, 10, 15, 0.85);
+      border: 2px solid rgba(255,255,255,0.1); border-radius: 16px; padding: 5px;
+      box-shadow: inset 0 0 50px rgba(0,0,0,0.8); margin-bottom: 10px; backdrop-filter: blur(5px);
+      touch-action: none;
+    }
+    #grid { display: grid; grid-template-columns: repeat(8, 1fr); grid-template-rows: repeat(8, 1fr); gap: 4px; width: 100%; height: 100%; }
+
+    /* --- TILES --- */
+    .tile {
+      position: relative; width: 100%; height: 100%; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.7rem; font-weight: bold; text-align: center; color: white;
+      text-shadow: 0 1px 2px rgba(0,0,0,0.8); overflow: hidden; z-index: 10;
+      background: rgba(20, 20, 20, 0.6); border: 3px solid var(--color-glow);
+      box-shadow: 0 0 6px var(--color-glow), inset 0 0 8px var(--color-glow);
+      transition: transform 0.2s;
+      touch-action: none;
+    }
+    .tile::after {
+      content: ''; position: absolute; top: 12%; left: 15%; width: 30%; height: 20%;
+      background: radial-gradient(ellipse at center, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0) 70%);
+      border-radius: 50%; filter: blur(1px); opacity: 0.9; transform: rotate(-45deg);
+    }
+    .tile[style*="#ffffff"] { color: #fff; text-shadow: 0 0 5px black; --color-glow: #cccccc; }
+    @media (max-width: 380px) { .tile { font-size: 0.55rem; border-width: 1.5px; } }
+    .tile.selected { transform: scale(1.15); box-shadow: 0 0 20px white, inset 0 0 20px white; border-color: white; z-index: 20; }
+
+    .tile.booster-bomb { --color-glow: #ff3333 !important; animation: pulse 1s infinite; }
+    .tile.booster-bomb::before { content: '☢️'; font-size: 1.8rem; position: absolute; z-index: 15; filter: drop-shadow(0 0 3px black); }
+    .tile.booster-polymer { --color-glow: #00ff00 !important; animation: pulse 1s infinite; }
+    .tile.booster-polymer::before { content: '🧬'; font-size: 1.8rem; position: absolute; z-index: 15; filter: drop-shadow(0 0 3px black); }
+    .tile.booster-catalyst { --color-glow: #ffffff !important; animation: pulse-rainbow 1s infinite linear; }
+    .tile.booster-catalyst::before { content: '💠'; font-size: 2rem; position: absolute; z-index: 15; filter: drop-shadow(0 0 3px black); }
+    .tile.booster-catalyst span { display: none; }
+
+    .tile.obstacle-brick { background: repeating-linear-gradient(45deg, #5c2a00, #5c2a00 10px, #3d1c00 10px, #3d1c00 20px) !important; border: 3px solid #8b4513 !important; box-shadow: 0 4px 5px black !important; }
+    .tile.obstacle-brick::after { display: none; }
+    .tile.obstacle-metal { background: linear-gradient(135deg, #444 0%, #222 100%) !important; border: 3px solid #777 !important; box-shadow: inset 0 0 10px black !important; }
+    .tile.obstacle-metal::after { display: none; }
+    .tile.obstacle-metal::before { content: '⛓️'; font-size: 1.8rem; filter: grayscale(100%); opacity: 0.8; }
+
+    @keyframes pulse { 50% { box-shadow: 0 0 15px var(--color-glow), inset 0 0 15px var(--color-glow); } }
+    @keyframes pulse-rainbow { 0%{border-color:red;} 33%{border-color:lime;} 66%{border-color:blue;} 100%{border-color:red;} }
+
+    .tile.matched { animation: pop 0.3s forwards; }
+    .tile.explode-out { animation: explode-out 0.6s forwards; }
+    @keyframes explode-out { 0%{transform:scale(1);} 50%{transform:scale(1.5);opacity:1;filter:brightness(3);} 100%{transform:scale(0) rotate(45deg);opacity:0;} }
+    @keyframes pop { 100% {transform:scale(0);opacity:0;} }
+    .tile.hint-anim { animation: hintPulse 1s infinite; z-index: 25; border-color: white !important; }
+    @keyframes hintPulse { 0% { transform: scale(1); filter: brightness(1); } 50% { transform: scale(1.15); filter: brightness(1.3); } 100% { transform: scale(1); filter: brightness(1); } }
+
+    .swipe-trail { position: absolute; width: 10px; height: 10px; background: white; border-radius: 50%; pointer-events: none; z-index: 9999; box-shadow: 0 0 10px #00f3ff; animation: fade 0.3s forwards; }
+    @keyframes fade { 100% { opacity: 0; transform: scale(0.1); } }
+
+    .tile-content { padding: 2px; line-height: 1.1; pointer-events: none; word-break: break-word; }
+    .floating-text { position: absolute; font-weight: bold; font-size: 1.4rem; color: #fff; text-shadow: 0 0 5px #00f3ff; pointer-events: none; animation: floatUp 1s forwards; z-index: 100; white-space: nowrap; }
+    .floating-text.big { font-size: 2.2rem; color: #ffd700; text-shadow: 0 0 15px #ff0000; z-index: 101; }
+    @keyframes floatUp { 0% { transform: translateY(0) scale(1); opacity: 1; } 100% { transform: translateY(-60px) scale(1.2); opacity: 0; } }
+
+    #reaction-display { height: 30px; width: 100%; text-align: center; font-weight: bold; color: var(--neon-accent); text-shadow: 0 0 10px var(--neon-accent); font-size: 1.1rem; margin-bottom: 5px; opacity: 0; transition: opacity 0.3s; }
+
+    .controls { margin-top: auto; display: flex; width: 100%; justify-content: space-around; padding: 10px; }
+    button { background: linear-gradient(135deg, #1e2230 0%, #14161f 100%); border: 1px solid #00f3ff; color: #00f3ff; padding: 10px 20px; border-radius: 8px; font-weight: bold; text-transform: uppercase; cursor: pointer; box-shadow: 0 0 10px rgba(0, 243, 255, 0.1); transition: all 0.2s; }
+    button:hover { background: #00f3ff; color: black; }
+    .hint-btn { border-color: #ffd700; color: #ffd700; }
+    .back-btn { font-size: 0.8rem; padding: 5px 10px; }
+    .music-btn, .help-btn { background: none; border: 1px solid #00f3ff; width: 40px; height: 40px; padding: 5px; border-radius: 50%; color: white; display: flex; align-items: center; justify-content: center; z-index: 101; cursor: pointer; }
+    #music-vol { accent-color: #00f3ff; }
+
+    /* MODALS */
+    .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index:1000; justify-content:center; align-items:center; flex-direction:column; backdrop-filter:blur(5px); }
+    .modal-content { background: #1a1a24; padding: 30px; border-radius: 20px; border: 2px solid #00f3ff; text-align: center; width: 90%; max-width: 400px; box-shadow: 0 0 30px rgba(0,243,255,0.3); }
+    .modal-btn-group { display: flex; flex-direction: column; gap: 10px; margin-top: 20px; width: 100%; }
+    .social-btn { display: flex; justify-content: center; gap: 10px; background: #333; color: white; border: 1px solid #00f3ff; }
+    .download-btn { background: #E1306C; border-color: #E1306C; color: white; }
+    .score-big { font-size: 3rem; margin: 10px 0; font-weight: 800; color: #fff; }
+    input[type="text"] { width: 80%; padding: 10px; font-size: 1.2rem; margin-bottom: 15px; border-radius: 8px; background: #333; color: white; border: 1px solid #00f3ff; text-align: center; }
+    .modal-scroll { max-height: 60vh; overflow-y: auto; text-align: left; padding-right: 10px; }
+    .rule-item { margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; }
+    .rule-title { color: #ffd700; font-weight: bold; margin-bottom: 5px; font-size: 1.1rem; }
+    .hidden { display: none !important; }
+
+    #toast { visibility: hidden; min-width: 250px; margin-left: -125px; background-color: #333; color: #fff; text-align: center; border-radius: 10px; padding: 16px; position: fixed; z-index: 2000; left: 50%; bottom: 30px; font-size: 17px; border: 2px solid #00f3ff; box-shadow: 0 0 15px #00f3ff; }
+    #toast.show { visibility: visible; animation: fadein 0.5s, fadeout 0.5s 2.5s; }
+    @keyframes fadein { from {bottom: 0; opacity: 0;} to {bottom: 30px; opacity: 1;} }
+    @keyframes fadeout { from {bottom: 30px; opacity: 1;} to {bottom: 0; opacity: 0;} }
+
+    /* FIX: hint shake animation */
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20% { transform: translateX(-6px); }
+      40% { transform: translateX(6px); }
+      60% { transform: translateX(-4px); }
+      80% { transform: translateX(4px); }
+    }
+    .shake-screen { animation: shake 0.35s ease-in-out; }
+  </style>
+</head>
+
+<body>
+  <div class="lab-background-layer">
+    <svg class="lab-svg" viewBox="0 0 800 600" preserveAspectRatio="xMidYMid slice">
+      <defs>
+        <linearGradient id="g1" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" style="stop-color:#1a0b2e"/>
+          <stop offset="100%" style="stop-color:#000"/>
+        </linearGradient>
+        <filter id="f1">
+          <feGaussianBlur stdDeviation="4"/>
+          <feMerge>
+            <feMergeNode/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+      </defs>
+      <rect width="800" height="600" fill="url(#g1)"/>
+      <g transform="translate(200,320)" class="liquid-anim">
+        <circle cx="0" cy="50" r="50" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
+        <path d="M-45 50 Q0 60 45 50 A45 45 0 0 1 -45 50" fill="#ff00cc" filter="url(#f1)" opacity="0.6"/>
+      </g>
+      <g transform="translate(600,330)" class="liquid-anim" style="animation-delay:-2s">
+        <path d="M-50 100 L50 100 L20 -20 L-20 -20 Z" fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.2)" stroke-width="2"/>
+        <path d="M-40 80 Q0 90 40 80 L50 100 L-50 100 Z" fill="#00ffff" filter="url(#f1)" opacity="0.6"/>
+      </g>
+    </svg>
+  </div>
+
+  <!-- MAP -->
+  <div id="map-view" class="view-container active">
+    <div class="map-header">
+      <div class="header-top">
+        <div style="display:flex; gap:10px; align-items:center;">
+          <button class="music-btn" onclick="toggleMusic()" id="music-btn">🔇</button>
+          <input id="music-vol" type="range" min="0" max="1" step="0.01" value="0.6" style="width:90px;">
+          <button class="help-btn" onclick="showHowTo()">❓</button>
+        </div>
+        <div class="logo">CHEMI<span>CRUSH</span></div>
+        <div style="font-size:0.9rem; width:40px;"></div>
+      </div>
+      <div class="player-stats-bar">
+        <span>Score: <b id="my-total-score">0</b> | <span id="player-name-display" style="color:#00f3ff">Guest</span></span>
+      </div>
+    </div>
+    <div class="map-content" id="map-content">
+      <svg id="map-svg-layer" style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:0;pointer-events:none;">
+        <path id="path-line" fill="none" stroke="rgba(0, 243, 255, 0.3)" stroke-width="6" stroke-linecap="round"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- GAME -->
+  <div id="game-container" class="view-container">
+    <header>
+      <button class="back-btn" onclick="showMap()">◀ Map</button>
+      <div class="logo">CHEMI<span>CRUSH</span></div>
+      <div class="stats-bar">
+        <div class="stat-box"><span class="stat-label">Lvl</span><span class="stat-value" id="level-display">1</span></div>
+        <div class="stat-box"><span class="stat-label">Moves</span><span class="stat-value" id="moves-display">25</span></div>
+        <div class="stat-box"><span class="stat-label">Score</span><span class="stat-value" id="score-display">0</span></div>
+      </div>
+    </header>
+    <div id="reaction-display"></div>
+    <div id="board-wrapper"><div id="grid"></div></div>
+    <div class="controls">
+      <div class="stat-box"><span class="stat-label">Target</span><span class="stat-value" id="target-display">1000</span></div>
+      <button class="hint-btn" onclick="showHint()">Hint 💡</button>
+      <div class="stat-box"><span class="stat-label">Combo</span><span class="stat-value" id="combo-display">0</span></div>
+      <div class="stat-box"><span class="stat-label">Accuracy</span><span class="stat-value" id="accuracy-display">100%</span></div>
+    </div>
+  </div>
+
+  <!-- MODALS -->
+  <div id="start-modal" class="modal" style="display:flex;">
+    <div class="modal-content">
+      <h2>CHEMICRUSH</h2>
+      <p>Enter Name:</p>
+      <input type="text" id="player-name-input" placeholder="Your Name" maxlength="12">
+      <button onclick="startApp()">Start</button>
+    </div>
+  </div>
+
+  <div id="level-modal" class="modal">
+    <div class="modal-content">
+      <h2 id="level-title-modal">Level 1</h2>
+      <p>Target Score:</p>
+      <div class="score-big" id="level-target-modal" style="color:#ffd700">1000</div>
+      <br>
+      <button onclick="confirmStartLevel()">Play</button>
+      <button class="back-btn" onclick="closeLevelModal()" style="margin-top:10px;background:none;border:none;">Cancel</button>
+    </div>
+  </div>
+
+  <div id="result-modal" class="modal">
+    <div class="modal-content">
+      <h2 id="result-title">Complete!</h2>
+      <div class="score-big" id="result-score">0</div>
+      <p>Total: <span id="new-total-score">0</span></p>
+      <div class="modal-btn-group">
+        <button class="social-btn" onclick="shareScore()">📋 Share Achievement</button>
+        <button class="back-btn" onclick="showMap()">Return to Map</button>
+        <button class="download-btn" onclick="downloadCard()">Download Card</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="howto-modal" class="modal">
+    <div class="modal-content">
+      <h2>HOW TO PLAY</h2>
+      <div class="modal-scroll">
+        <div class="rule-item"><div class="rule-title">🧪 Basic</div>Match 3 tiles of same family.</div>
+        <div class="rule-item"><div class="rule-title">☢️ Bomb</div>Match 4 to create a Bomb. Swapping it explodes 3x3!</div>
+        <div class="rule-item"><div class="rule-title">🧬 Polymer</div>Match 5 (L/T) for Polymer. Clears lines.</div>
+        <div class="rule-item"><div class="rule-title">💠 Catalyst</div>Match 5 (Line). Clears all one color.</div>
+        <div class="rule-item"><div class="rule-title">🧱 Obstacles</div>Brick breaks on match. Metal needs Booster.</div>
+        <div class="rule-item"><div class="rule-title">👆 Controls</div>Swipe to swap.</div>
+      </div>
+      <br><button onclick="closeHowTo()">Got it!</button>
+    </div>
+  </div>
+
+  <div id="toast">Copied to clipboard!</div>
+  <canvas id="share-canvas" width="600" height="800" style="display:none;"></canvas>
+
+
+<script>
+/** CHEMICRUSH LOGIC **/
+const FAMILIES = {
+  'alkane': { color: '#a0a0a0', items: ['Alkane', 'C-C', 'No FG'] },
+  'alkene': { color: '#ffff00', items: ['Alkene', 'C=C', 'Double Bond'] },
+  'alkyne': { color: '#ff8800', items: ['Alkyne', 'C≡C', 'Triple Bond'] },
+  'arene': { color: '#cd7f32', items: ['Arene', '⬡', 'Aromatic'] },
+  'alcohol': { color: '#00ff00', items: ['Alcohol', '–OH', 'Hydroxyl'] },
+  'ether': { color: '#00fa9a', items: ['Ether', 'C–O–C', 'Alkoxy'] },
+  'aldehyde': { color: '#1e90ff', items: ['Aldehyde', '–CHO', 'Carbonyl'] },
+  'ketone': { color: '#00bfff', items: ['Ketone', 'C=O', 'Carbonyl'] },
+  'carboxylic': { color: '#ff0000', items: ['Carboxyl. Acid', '–COOH', 'Carboxyl'] },
+  'ester': { color: '#ff1493', items: ['Ester', '–COOR', 'Carboalkoxy'] },
+  'anhydride': { color: '#8b0000', items: ['Anhydride', 'Linkage', '–CO–O–CO–'] },
+  'acyl': { color: '#d2691e', items: ['Acyl Cl', '–COCl', 'Acyl Cl'] },
+  'amine': { color: '#9400d3', items: ['Amine', '–NH₂', 'Amino'] },
+  'amide': { color: '#ba55d3', items: ['Amide', '–CONH–', 'Carboxamide'] },
+  'nitrile': { color: '#00ffff', items: ['Nitrile', '–CN', 'Cyano'] },
+  'haloalkane': { color: '#ffffff', items: ['Haloalkane', '–X', 'Halogen'] }
+};
+
+const ROWS = 8; const COLS = 8;
+let board = []; let currentLevel = 1; let highestUnlockedLevel = 1;
+let score = 0; let moves = 25; let combo = 0; let maxCombo = 0;
+let attempts = 0; let validMovesCount = 0; let selectedTile = null;
+let isProcessing = false; let activeFamilies = []; let audioCtx = null;
+let isMusicPlaying = false;
+let playerName = "Guest"; let playerTotalScore = 0;
+let selectedLevelToPlay = 1;
+let touchStartX=0, touchStartY=0, touchActive=false, activeTile=null;
+let isLevelComplete = false;
+
+// FIX: safe reference for result modal
+const resultModal = document.getElementById('result-modal');
+
+// --- AUDIO INIT (SFX only via WebAudio) ---
+function initAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+// --- BGM (HTMLAudioElement) ---
+// --- BGM (Procedural WebAudio) ---
+// No mp3 needed. Generates a looping neon-synth vibe.
+
+let bgm = {
+  isOn: true,
+  volume: 0.6,
+  master: null,
+  timer: null,
+  step: 0,
+  tempoMs: 140,     // lower = faster
+  swing: 0.08,      // 0..0.2
+};
+
+// Simple scale (A minor-ish vibe)
+const SCALE = [220, 247, 262, 294, 330, 349, 392, 440]; // A3..A4-ish
+
+function loadMusicSettings() {
+  const muted = localStorage.getItem('cc_music_muted');
+  const vol = localStorage.getItem('cc_music_vol');
+
+  bgm.isOn = muted ? (muted !== 'true') : true; // default ON
+  bgm.volume = vol ? Math.min(1, Math.max(0, parseFloat(vol))) : 0.35;
+
+  const volEl = document.getElementById('music-vol');
+  if (volEl) volEl.value = bgm.volume;
+
+  updateMusicButton();
+}
+
+function saveMusicSettings() {
+  localStorage.setItem('cc_music_muted', (!bgm.isOn).toString());
+  localStorage.setItem('cc_music_vol', (bgm.volume ?? 0.35).toString());
+}
+
+function updateMusicButton() {
+  const btn = document.getElementById('music-btn');
+  if (!btn) return;
+  if (bgm.isOn) { btn.innerText = '🎵'; btn.style.opacity = '1'; }
+  else { btn.innerText = '🔇'; btn.style.opacity = '0.5'; }
+}
+
+function ensureBgmInit() {
+  if (!audioCtx) initAudio();
+  if (!bgm.master) {
+    bgm.master = audioCtx.createGain();
+    bgm.master.gain.value = 0; // will ramp in
+    bgm.master.connect(audioCtx.destination);
+  }
+}
+
+function toggleMusic(force) {
+  if (force !== undefined) bgm.isOn = force;
+  else bgm.isOn = !bgm.isOn;
+
+  ensureBgmInit();
+
+  if (bgm.isOn) {
+    startBgm();
+  } else {
+    stopBgm();
+  }
+  updateMusicButton();
+  saveMusicSettings();
+}
+
+// Slider volume -> master gain
+(function bindVolumeSlider(){
+  const volEl = document.getElementById('music-vol');
+  if (!volEl) return;
+  volEl.addEventListener('input', () => {
+    bgm.volume = parseFloat(volEl.value);
+    ensureBgmInit();
+    if (bgm.master) bgm.master.gain.setTargetAtTime(bgm.isOn ? bgm.volume : 0, audioCtx.currentTime, 0.03);
+    saveMusicSettings();
+  });
+})();
+
+// Start after first user gesture (browser rule)
+document.addEventListener('pointerdown', () => {
+  initAudio();
+  loadMusicSettings();
+  if (bgm.isOn) startBgm();
+}, { once: true });
+
+// --- Music engine (step sequencer) ---
+function startBgm() {
+  ensureBgmInit();
+  if (bgm.timer) return; // already running
+
+  // fade in
+  bgm.master.gain.setTargetAtTime(bgm.volume, audioCtx.currentTime, 0.05);
+
+  bgm.step = 0;
+
+  const tick = () => {
+    if (!bgm.isOn) return;
+
+    // patterns
+    // bass: steady pulse
+    const bassPattern = [0, 0, 3, 0, 5, 0, 3, 0]; // scale degrees
+    const leadPattern = [7, 5, 4, 5, 7, 5, 4, 2, 4, 5, 7, 9, 7, 5, 4, 2]; // will wrap
+    const hatPattern  = [1,0,1,0, 1,0,1,0, 1,0,1,0, 1,0,1,0]; // on/off
+
+    // --- synth events per step ---
+    const t = audioCtx.currentTime;
+    const s = bgm.step;
+
+    // bass on even steps
+    if (s % 2 === 0) {
+      const deg = bassPattern[(s/2) % bassPattern.length] % SCALE.length;
+      playBgmNote(SCALE[deg] / 2, 0.10, 0.08, 'sawtooth', 0.015); // warm bass
+    }
+
+    // lead every step (but softer)
+    const leadDeg = leadPattern[s % leadPattern.length];
+    const freq = SCALE[leadDeg % SCALE.length] * (leadDeg >= 8 ? 2 : 1); // occasional octave pop
+    playBgmNote(freq, 0.035, 0.07, 'triangle', 0.012);
+
+    // hi-hat sparkle
+    if (hatPattern[s % hatPattern.length]) {
+      playHat(0.012, 0.03);
+    }
+
+    // advance
+    bgm.step = (bgm.step + 1) % 16;
+
+    // swing timing
+    const isOffBeat = (bgm.step % 2 === 1);
+    const nextDelay = bgm.tempoMs * (isOffBeat ? (1 + bgm.swing) : (1 - bgm.swing));
+
+    bgm.timer = setTimeout(tick, nextDelay);
+  };
+
+  bgm.timer = setTimeout(tick, bgm.tempoMs);
+}
+
+function stopBgm() {
+  if (bgm.timer) {
+    clearTimeout(bgm.timer);
+    bgm.timer = null;
+  }
+  if (bgm.master && audioCtx) {
+    bgm.master.gain.setTargetAtTime(0.0001, audioCtx.currentTime, 0.05); // fade out
+  }
+}
+
+// A soft synth note with a tiny filter-ish feel via quick envelope
+function playBgmNote(freq, level, dur, type='triangle', attack=0.01) {
+  if (!audioCtx || !bgm.master) return;
+
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+
+  o.type = type;
+  o.frequency.setValueAtTime(freq, audioCtx.currentTime);
+
+  g.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(level, audioCtx.currentTime + attack);
+  g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
+
+  o.connect(g);
+  g.connect(bgm.master);
+
+  o.start();
+  o.stop(audioCtx.currentTime + dur + 0.02);
+}
+
+// Simple "hat" using noise burst (no buffer needed: use high freq oscillator + short decay)
+function playHat(level, dur) {
+  if (!audioCtx || !bgm.master) return;
+
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+
+  o.type = 'square';
+  o.frequency.setValueAtTime(8000, audioCtx.currentTime);
+
+  g.gain.setValueAtTime(level, audioCtx.currentTime);
+  g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
+
+  o.connect(g);
+  g.connect(bgm.master);
+
+  o.start();
+  o.stop(audioCtx.currentTime + dur + 0.01);
+}
+
+// --- INIT APP ---
+function startApp() {
+  const name = document.getElementById('player-name-input').value.trim();
+  if (name) playerName = name;
+
+  document.getElementById('start-modal').style.display = 'none';
+
+  // mesti init audio dulu
+  initAudio();
+  
+  loadMusicSettings();
+  bgm.isOn = true;
+  saveMusicSettings();
+  // mula muzik lepas user klik Start
+  if (bgm.isOn) startBgm();
+  updateMusicButton();
+
+  // simpan nama
+  localStorage.setItem('cc_name', playerName);
+
+  loadProgress();
+  renderMap();
+}
+
+  
+
+function loadProgress() {
+  const sLvl = localStorage.getItem('cc_lvl'); if(sLvl) highestUnlockedLevel = parseInt(sLvl);
+  const sName = localStorage.getItem('cc_name'); if(sName) playerName = sName;
+  const sScore = localStorage.getItem('cc_score'); if(sScore) playerTotalScore = parseInt(sScore);
+
+  document.getElementById('player-name-display').innerText = playerName;
+  document.getElementById('my-total-score').innerText = playerTotalScore.toLocaleString();
+}
+function saveProgress() {
+  localStorage.setItem('cc_lvl', highestUnlockedLevel);
+  localStorage.setItem('cc_name', playerName);
+  localStorage.setItem('cc_score', playerTotalScore);
+}
+
+// --- HOW TO (FIX: previously missing) ---
+function showHowTo() {
+  const m = document.getElementById('howto-modal');
+  if (m) m.style.display = 'flex';
+}
+function closeHowTo() {
+  const m = document.getElementById('howto-modal');
+  if (m) m.style.display = 'none';
+}
+
+// --- MAP ---
+function renderMap() {
+  document.getElementById('map-view').classList.add('active');
+  document.getElementById('game-container').classList.remove('active');
+  document.getElementById('result-modal').style.display='none';
+
+  const mapContent = document.getElementById('map-content');
+  const svg = document.getElementById('map-svg-layer');
+  while(mapContent.lastChild !== svg) mapContent.removeChild(mapContent.lastChild);
+
+  const maxShow = highestUnlockedLevel + 3;
+  for(let i=1; i<=maxShow; i++) {
+    const d = document.createElement('div'); d.className = 'map-node';
+    if(i <= highestUnlockedLevel) {
+      d.innerText = i; d.classList.add('unlocked');
+      if(i===highestUnlockedLevel) d.classList.add('current');
+      d.onclick = () => { selectedLevelToPlay=i; showLevelInfo(i); };
+    } else { d.classList.add('locked'); }
+    mapContent.appendChild(d);
+  }
+
+  setTimeout(() => {
+    const curr = document.querySelector('.map-node.current');
+    if(curr) curr.scrollIntoView({behavior:'smooth', block:'center'});
+    drawPath();
+  }, 100);
+
+  updateStatsDisplay();
+}
+
+function updateStatsDisplay() {
+  document.getElementById('player-name-display').innerText = playerName;
+  document.getElementById('my-total-score').innerText = playerTotalScore.toLocaleString();
+}
+
+function drawPath() {
+  const nodes = document.querySelectorAll('.map-node');
+  if(nodes.length < 2) return;
+  const path = document.getElementById('path-line');
+  const rect = document.getElementById('map-content').getBoundingClientRect();
+  let d = "";
+  nodes.forEach((n, i) => {
+    const r = n.getBoundingClientRect();
+    const x = r.left + r.width/2 - rect.left;
+    const y = r.top + r.height/2 - rect.top;
+    if(i===0) d=`M ${x} ${y}`; else d+=` L ${x} ${y}`;
+  });
+  path.setAttribute('d', d);
+  document.getElementById('map-svg-layer').setAttribute('height', document.getElementById('map-content').scrollHeight);
+}
+
+function showMap() { renderMap(); }
+
+// --- GAME ---
+function showLevelInfo(lvl) {
+  const config = getLevelConfig(lvl);
+  document.getElementById('level-title-modal').innerText = `Level ${lvl}`;
+  document.getElementById('level-target-modal').innerText = config.target;
+  document.getElementById('level-modal').style.display = 'flex';
+}
+function closeLevelModal() { document.getElementById('level-modal').style.display = 'none'; }
+function confirmStartLevel() { closeLevelModal(); loadLevel(selectedLevelToPlay); }
+
+function getLevelConfig(lvl) {
+  const target = 1000 + (lvl-1)*250;
+  if(lvl===1) return { target, families:['alkane','alkene','alkyne','arene'], obsCount:0 };
+  if(lvl===2) return { target, families:['alkane','alkene','alcohol','aldehyde','ketone','carboxylic'], obsCount:0 };
+  if(lvl===3) return { target, families:['alkene','arene','amine','amide','nitrile','haloalkane'], obsCount:0 };
+
+  const keys = Object.keys(FAMILIES);
+  keys.sort(() => 0.5 - Math.random());
+  const fams = keys.slice(0, 6 + Math.floor(lvl/20));
+
+  // FIX: obstacles appear earlier + more noticeable (lvl4=2, lvl5=3, lvl6=4... capped at 10)
+  const obs = Math.min(10, Math.max(2, lvl - 2));
+  return { target, families: fams, obsCount: obs };
+}
+
+function loadLevel(lvl) {
+  currentLevel = lvl; score=0; moves=25; combo=0; maxCombo=0; attempts=0; validMovesCount=0;
+  isProcessing=false; isLevelComplete=false;
+
+  document.getElementById('map-view').classList.remove('active');
+  document.getElementById('game-container').classList.add('active');
+
+  const cfg = getLevelConfig(lvl);
+  activeFamilies = cfg.families;
+  document.getElementById('level-display').innerText = lvl;
+  document.getElementById('target-display').innerText = cfg.target;
+
+  updateUI();
+  createBoard(cfg.obsCount);
+}
+
+function getRandomTile() {
+  const key = activeFamilies[Math.floor(Math.random() * activeFamilies.length)];
+  const data = FAMILIES[key];
+  const text = data.items[Math.floor(Math.random() * data.items.length)];
+  return { family: key, text: text, type: 'normal', id: Math.random().toString(36) };
+}
+
+function createBoard(obsCount) {
+  board = [];
+  const grid = document.getElementById('grid'); grid.innerHTML = '';
+
+  for(let r=0; r<ROWS; r++) {
+    let row = [];
+    for(let c=0; c<COLS; c++) row.push(null);
+    board.push(row);
+  }
+
+  for(let r=0; r<ROWS; r++) {
+    for(let c=0; c<COLS; c++) {
+      let tile;
+      let safety = 0;
+      do {
+        tile = getRandomTile();
+        safety++;
+      } while(
+        safety < 100 &&
+        ((r>=2 && board[r-1][c] && board[r-2][c] && board[r-1][c].family===tile.family && board[r-2][c].family===tile.family) ||
+         (c>=2 && board[r][c-1] && board[r][c-2] && board[r][c-1].family===tile.family && board[r][c-2].family===tile.family))
+      );
+      board[r][c] = tile;
+    }
+  }
+
+  let added = 0;
+  while(added < obsCount) {
+    let r = Math.floor(Math.random()*(ROWS-2))+1;
+    let c = Math.floor(Math.random()*COLS);
+    if(board[r][c].family !== 'obstacle') {
+      board[r][c] = { family: 'obstacle', type: Math.random()>0.5?'obstacle-brick':'obstacle-metal', text: '', id: Math.random() };
+      added++;
+    }
+  }
+
+  renderBoard();
+}
+
+function renderBoard() {
+  const grid = document.getElementById('grid'); grid.innerHTML = '';
+  for(let r=0; r<ROWS; r++) {
+    for(let c=0; c<COLS; c++) {
+      const t = board[r][c];
+      const el = document.createElement('div');
+      el.className = 'tile';
+      el.dataset.r = r; el.dataset.c = c;
+
+      el.addEventListener('touchstart', ts, {passive:false});
+      el.addEventListener('touchmove', tm, {passive:false});
+      el.addEventListener('touchend', te, {passive:false});
+      el.addEventListener('mousedown', ts, {passive:false});
+
+      if(t.family === 'obstacle') {
+        el.classList.add(t.type === 'obstacle-brick' ? 'obstacle-brick' : 'obstacle-metal');
+      } else {
+        const color = FAMILIES[t.family].color;
+        el.style.setProperty('--color-glow', color);
+        if(FAMILIES[t.family].color === '#ffffff') el.style.setProperty('--color-glow', '#cccccc');
+
+        if(t.text === '⬡') {
+          el.innerHTML = `
+          <svg viewBox="0 0 100 100" style="width: 70%; height: 70%; overflow: visible; display: block; margin: auto;">
+            <path d="M50 5 L89 27.5 L89 72.5 L50 95 L11 72.5 L11 27.5 Z" fill="none" stroke="white" stroke-width="4" stroke-linejoin="round"/>
+            <line x1="20" y1="35" x2="20" y2="65" stroke="white" stroke-width="4" stroke-linecap="round" />
+            <line x1="55" y1="83" x2="80" y2="68" stroke="white" stroke-width="4" stroke-linecap="round" />
+            <line x1="55" y1="17" x2="80" y2="32" stroke="white" stroke-width="4" stroke-linecap="round" />
+          </svg>`;
+        } else {
+          el.innerHTML = `<span class="tile-content">${t.text}</span>`;
+        }
+
+        if(t.type !== 'normal') el.classList.add('booster-' + t.type);
+        if(selectedTile && selectedTile.r===r && selectedTile.c===c) el.classList.add('selected');
+      }
+      grid.appendChild(el);
+    }
+  }
+}
+
+// --- INTERACTION ---
+function ts(e) {
+  if(isProcessing) return;
+  const evt = e.type.includes('mouse') ? e : e.touches[0];
+  touchStartX = evt.clientX; touchStartY = evt.clientY; touchActive = true;
+  const t=e.target.closest('.tile');
+  if(t) activeTile={r:parseInt(t.dataset.r), c:parseInt(t.dataset.c)};
+  if(e.type === 'mousedown') {
+    document.addEventListener('mouseup', te);
+    document.addEventListener('mousemove', tm);
+  }
+}
+function tm(e) { if(touchActive) e.preventDefault(); }
+function te(e) {
+  if(!touchActive || !activeTile) return;
+  let clientX, clientY;
+  if(e.type === 'mouseup') {
+    clientX = e.clientX; clientY = e.clientY;
+    document.removeEventListener('mouseup', te);
+    document.removeEventListener('mousemove', tm);
+  } else {
+    clientX = e.changedTouches[0].clientX; clientY = e.changedTouches[0].clientY;
+  }
+  const dx = clientX - touchStartX;
+  const dy = clientY - touchStartY;
+  if(Math.abs(dx)>30 || Math.abs(dy)>30) {
+    let r2=activeTile.r, c2=activeTile.c;
+    if(Math.abs(dx)>Math.abs(dy)) { if(dx>0) c2++; else c2--; } else { if(dy>0) r2++; else r2--; }
+    if(r2>=0 && r2<ROWS && c2>=0 && c2<COLS) attemptSwap(activeTile.r, activeTile.c, r2, c2);
+  }
+  touchActive=false;
+}
+
+function isMatch(t1, t2) {
+  if (!t1 || !t2) return false;
+  if (t1.family === 'obstacle' || t2.family === 'obstacle') return false;
+  if (t1.type !== 'normal' && t1.type === t2.type) return true;
+  return t1.family === t2.family;
+}
+
+async function attemptSwap(r1, c1, r2, c2) {
+  const t1 = board[r1][c1]; const t2 = board[r2][c2];
+  if(t1.family==='obstacle' || t2.family==='obstacle') { playSound('invalid'); return; }
+
+  attempts++; // FIX: track attempts
+
+  isProcessing = true;
+  board[r1][c1] = t2; board[r2][c2] = t1;
+  renderBoard();
+  await wait(200);
+
+  if(t1.type !== 'normal' || t2.type !== 'normal') {
+    validMovesCount++; // FIX: booster swap is valid
+    moves--;
+    if(t1.type==='catalyst' || t2.type==='catalyst') {
+      const target = (t1.type==='catalyst') ? t2.family : t1.family;
+      await activateCatalyst(target);
+    } else {
+      await explodeAt(r1, c1); await explodeAt(r2, c2);
+    }
+    await settleBoard();
+    return;
+  }
+
+  const matches = findMatches();
+  if(matches.length > 0) {
+    validMovesCount++; // FIX: match swap is valid
+    moves--;
+    await processMatches(matches);
+  } else {
+    board[r1][c1] = t1; board[r2][c2] = t2;
+    combo = 0; // FIX: reset combo on invalid move
+    playSound('invalid');
+    renderBoard();
+    isProcessing = false;
+  }
+  updateUI();
+}
+
+function findMatches() {
+  let matched = new Set();
+  for(let r=0; r<ROWS; r++) {
+    for(let c=0; c<COLS-2; c++) {
+      let t = board[r][c]; if(!t || t.family==='obstacle') continue;
+      if(board[r][c+1] && board[r][c+2] && isMatch(t, board[r][c+1]) && isMatch(t, board[r][c+2])) {
+        matched.add(`${r},${c}`); matched.add(`${r},${c+1}`); matched.add(`${r},${c+2}`);
+      }
+    }
+  }
+  for(let c=0; c<COLS; c++) {
+    for(let r=0; r<ROWS-2; r++) {
+      let t = board[r][c]; if(!t || t.family==='obstacle') continue;
+      if(board[r+1][c] && board[r+2][c] && isMatch(t, board[r+1][c]) && isMatch(t, board[r+2][c])) {
+        matched.add(`${r},${c}`); matched.add(`${r+1},${c}`); matched.add(`${r+2},${c}`);
+      }
+    }
+  }
+  return Array.from(matched).map(s => { let p=s.split(','); return {r:parseInt(p[0]), c:parseInt(p[1])}; });
+}
+
+async function processMatches(matches) {
+  combo++;
+  if (combo > maxCombo) maxCombo = combo; // FIX: update streak(max combo)
+
+  let uniqueCoords = matches;
+  let scoreAdd = uniqueCoords.length * 10 * (1 + Math.floor(combo/2));
+  score += scoreAdd;
+
+  if (uniqueCoords.length >= 4) {
+    let center = uniqueCoords[Math.floor(uniqueCoords.length/2)];
+    let type = uniqueCoords.length >= 5 ? 'catalyst' : 'bomb';
+    board[center.r][center.c] = {
+      family: board[center.r][center.c].family,
+      text: '', type: type, id: Math.random()
+    };
+    uniqueCoords = uniqueCoords.filter(p => p.r !== center.r || p.c !== center.c);
+  }
+
+  for(let p of uniqueCoords) {
+    const el = document.querySelector(`.tile[data-r="${p.r}"][data-c="${p.c}"]`);
+    if(el) el.classList.add('matched');
+    board[p.r][p.c] = null;
+  }
+  playSound('match');
+  await wait(300);
+  await settleBoard();
+}
+
+async function settleBoard() {
+  for(let c=0; c<COLS; c++) {
+    for(let r=ROWS-1; r>=0; r--) {
+      if(board[r][c] === null) {
+        for(let k=r-1; k>=0; k--) {
+          if(board[k][c] !== null && board[k][c].family !== 'obstacle') {
+            board[r][c] = board[k][c]; board[k][c] = null; break;
+          } else if (board[k][c] && board[k][c].family === 'obstacle') { break; }
+        }
+      }
+    }
+  }
+  for(let r=0; r<ROWS; r++) {
+    for(let c=0; c<COLS; c++) {
+      if(board[r][c] === null) board[r][c] = getRandomTile();
+    }
+  }
+  renderBoard();
+  await wait(200);
+
+  const newM = findMatches();
+  if(newM.length > 0) await processMatches(newM);
+  else { isProcessing = false; checkWin(); }
+  updateUI();
+}
+
+async function explodeAt(r, c) {
+  for(let i=r-1; i<=r+1; i++) for(let j=c-1; j<=c+1; j++) {
+    if(i>=0 && i<ROWS && j>=0 && j<COLS && board[i][j] && board[i][j].family!=='obstacle') board[i][j] = null;
+  }
+  playSound('bomb');
+}
+
+async function activateCatalyst(fam) {
+  for(let r=0; r<ROWS; r++) for(let c=0; c<COLS; c++) {
+    if(board[r][c] && board[r][c].family===fam) board[r][c] = null;
+  }
+  playSound('catalyst');
+}
+
+function checkWin() {
+  const cfg = getLevelConfig(currentLevel);
+  if(score >= cfg.target && !isLevelComplete) {
+    isLevelComplete = true;
+    playSound('transition');
+    document.querySelectorAll('.tile').forEach(t => t.style.animation = 'explode-out 0.5s forwards');
+    setTimeout(() => {
+      if(currentLevel === highestUnlockedLevel) highestUnlockedLevel++;
+      playerTotalScore += score;
+      saveProgress();
+
+      document.getElementById('result-title').innerText = "Complete!";
+      document.getElementById('result-title').style.color = "#fff";
+      document.getElementById('result-score').innerText = score;
+      document.getElementById('new-total-score').innerText = playerTotalScore.toLocaleString();
+      document.getElementById('result-modal').style.display = 'flex';
+
+      setTimeout(() => { showMap(); }, 2000);
+    }, 800);
+  } else if (moves <= 0) {
+    showResult(false);
+  }
+}
+
+function showResult(isWin) {
+  const rm = document.getElementById('result-modal');
+  if (!rm) return;
+
+  rm.style.display = 'flex';
+  document.getElementById('result-score').innerText = score;
+  document.getElementById('new-total-score').innerText = playerTotalScore.toLocaleString();
+
+  const title = document.getElementById('result-title');
+  if (!isWin) {
+    title.innerText = "Game Over";
+    title.style.color = "red";
+  } else {
+    title.innerText = "Complete!";
+    title.style.color = "#fff";
+  }
+}
+
+// UTILS
+function wait(ms) { return new Promise(r => setTimeout(r, ms)); }
+function updateUI() {
+  document.getElementById('score-display').innerText = score;
+  document.getElementById('moves-display').innerText = moves;
+
+  const comboElem = document.getElementById('combo-display');
+  if (comboElem) comboElem.innerText = maxCombo;
+
+  const accElem = document.getElementById('accuracy-display');
+  if (accElem) {
+    accElem.innerText = attempts > 0 ? Math.round((validMovesCount / attempts) * 100) + '%' : '100%';
+  }
+}
+
+// SFX
+function playSound(t) {
+  if(!audioCtx) return;
+  const o = audioCtx.createOscillator();
+  const g = audioCtx.createGain();
+  o.connect(g); g.connect(audioCtx.destination);
+
+  if(t==='select') {
+    o.frequency.value=600;
+    g.gain.setValueAtTime(0.08, audioCtx.currentTime);
+    o.start(); o.stop(audioCtx.currentTime+0.1);
+  }
+
+  // FIX: cute "pop" sound for match
+  if(t==='match') {
+    o.type = 'triangle';
+    o.frequency.setValueAtTime(520, audioCtx.currentTime);
+    o.frequency.exponentialRampToValueAtTime(980, audioCtx.currentTime + 0.06);
+
+    g.gain.setValueAtTime(0.001, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.20, audioCtx.currentTime + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+
+    o.start();
+    o.stop(audioCtx.currentTime + 0.13);
+  }
+
+  if(t==='bomb') {
+    o.frequency.value=100; o.type='sawtooth';
+    g.gain.setValueAtTime(0.20, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime+0.4);
+    o.start(); o.stop(audioCtx.currentTime+0.4);
+  }
+  if(t==='catalyst') {
+    o.type='sine';
+    o.frequency.setValueAtTime(300, audioCtx.currentTime);
+    o.frequency.linearRampToValueAtTime(900, audioCtx.currentTime+0.25);
+    g.gain.setValueAtTime(0.12, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime+0.28);
+    o.start(); o.stop(audioCtx.currentTime+0.3);
+  }
+  if(t==='transition') {
+    o.type='sawtooth';
+    o.frequency.setValueAtTime(100, audioCtx.currentTime);
+    o.frequency.linearRampToValueAtTime(800, audioCtx.currentTime+0.5);
+    g.gain.setValueAtTime(0.12, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime+0.6);
+    o.start(); o.stop(audioCtx.currentTime+0.6);
+  }
+  if(t==='invalid') {
+    o.frequency.value=200; o.type='square';
+    g.gain.setValueAtTime(0.08, audioCtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime+0.12);
+    o.start(); o.stop(audioCtx.currentTime+0.12);
+  }
+}
+
+// SHARE
+function getAchievementTitle(level) {
+  if (level <= 1) return "💥 ChemiCrush Rookie Activated";
+  if (level === 2) return "⚡ Silver Reaction Master";
+  if (level === 3) return "🔥 Gold Catalyst Unleashed";
+  if (level === 4) return "💎 Platinum Alchemist Mode";
+  return "👑 Chemical Overlord Dominance";
+}
+
+function generateShareText() {
+  const header = getAchievementTitle(currentLevel);
+  const accElem = document.getElementById('accuracy-display');
+  const acc = accElem ? accElem.innerText : '100%';
+  return `${header}\nScore: ${score.toLocaleString()} pts\nStreak: ${maxCombo}\nAccuracy: ${acc}\nWho’s beating this? 🧪🔥`;
+}
+
+function shareScore() {
+  const text = generateShareText();
+  fallbackCopyTextToClipboard(text);
+  showToast("Copied to clipboard!");
+}
+
+function showToast(msg) {
+  const toast = document.getElementById("toast");
+  toast.innerText = msg; toast.className = "show";
+  setTimeout(function(){ toast.className = toast.className.replace("show", ""); }, 3000);
+}
+
+function downloadCard() {
+  const canvas = document.getElementById('share-canvas');
+  const ctx = canvas.getContext('2d');
+
+  // Background
+  const grad = ctx.createLinearGradient(0, 0, 0, 800);
+  grad.addColorStop(0, '#2a1036');
+  grad.addColorStop(1, '#180a1f');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 600, 800);
+
+  // Header
+  ctx.font = 'bold 30px Segoe UI';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#ffd700';
+  ctx.fillText(getAchievementTitle(currentLevel), 300, 80);
+
+  // Main Title
+  ctx.font = 'bold 50px Segoe UI';
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText('CHEMI', 300, 150);
+  ctx.fillStyle = '#ff66b2';
+  ctx.fillText('CRUSH', 300, 210);
+
+  // Score Circle
+  ctx.beginPath();
+  ctx.arc(300, 350, 120, 0, Math.PI * 2);
+  ctx.fillStyle = '#4a1036';
+  ctx.fill();
+  ctx.strokeStyle = '#ff66b2';
+  ctx.lineWidth = 5;
+  ctx.stroke();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 70px Segoe UI';
+  ctx.fillText(score.toLocaleString(), 300, 370);
+  ctx.font = '25px Segoe UI';
+  ctx.fillStyle = '#d4b3e2';
+  ctx.fillText('SCORE', 300, 290);
+
+  // Stats
+  ctx.font = '28px Segoe UI';
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'left';
+  ctx.fillText(`Streak: x${maxCombo}`, 100, 550);
+
+  const accElem = document.getElementById('accuracy-display');
+  const acc = accElem ? accElem.innerText : '100%';
+  ctx.fillText(`Accuracy: ${acc}`, 100, 600);
+
+  // Footer
+  ctx.font = 'italic 20px Segoe UI';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = '#00f3ff';
+  ctx.fillText("Who's beating this? 🧪🔥", 300, 750);
+
+  // Download
+  const dataUrl = canvas.toDataURL("image/png");
+  const link = document.createElement('a');
+  link.download = `ChemiCrush-Level${currentLevel}.png`;
+  link.href = dataUrl;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function fallbackCopyTextToClipboard(text) {
+  var textArea = document.createElement("textarea");
+  textArea.value = text;
+  textArea.style.top = "0";
+  textArea.style.left = "0";
+  textArea.style.position = "fixed";
+  document.body.appendChild(textArea);
+  textArea.focus();
+  textArea.select();
+
+  try {
+    document.execCommand('copy');
+  } catch (err) {
+    console.error('Fallback: Oops, unable to copy', err);
+  }
+
+  document.body.removeChild(textArea);
+}
+
+function clearHintMarks() {
+  document.querySelectorAll('.tile.hint-anim').forEach(el => el.classList.remove('hint-anim'));
+}
+
+function wouldMakeMatchAfterSwap(r1, c1, r2, c2) {
+  // swap sementara
+  const t1 = board[r1][c1];
+  const t2 = board[r2][c2];
+  board[r1][c1] = t2;
+  board[r2][c2] = t1;
+
+  const m = findMatches().length > 0;
+
+  // swap balik
+  board[r1][c1] = t1;
+  board[r2][c2] = t2;
+
+  return m;
+}
+
+function findHintSwap() {
+  // cari satu swap yang boleh buat match (kanan / bawah cukup)
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const t = board[r][c];
+      if (!t || t.family === 'obstacle') continue;
+
+      // swap kanan
+      if (c + 1 < COLS) {
+        const tR = board[r][c + 1];
+        if (tR && tR.family !== 'obstacle') {
+          if (wouldMakeMatchAfterSwap(r, c, r, c + 1)) return [{ r, c }, { r, c: c + 1 }];
+        }
+      }
+
+      // swap bawah
+      if (r + 1 < ROWS) {
+        const tD = board[r + 1][c];
+        if (tD && tD.family !== 'obstacle') {
+          if (wouldMakeMatchAfterSwap(r, c, r + 1, c)) return [{ r, c }, { r: r + 1, c }];
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function showHint() {
+  if (isProcessing) return;
+
+  clearHintMarks();
+
+  const hint = findHintSwap();
+  if (!hint) {
+    // kalau tiada move, bagi shake kecil sebagai feedback
+    const bw = document.getElementById('board-wrapper');
+    bw.classList.add('shake-screen');
+    setTimeout(() => bw.classList.remove('shake-screen'), 350);
+    return;
+  }
+
+  hint.forEach(p => {
+    const el = document.querySelector(`.tile[data-r="${p.r}"][data-c="${p.c}"]`);
+    if (el) el.classList.add('hint-anim');
+  });
+}
+
+
+function nextLevel() { loadLevel(currentLevel + 1); }
+function restartLevel() { loadLevel(currentLevel); }
+
+// EXPOSE TO GLOBAL
+window.showHowTo = showHowTo;
+window.closeHowTo = closeHowTo;
+window.startApp = startApp;
+window.confirmStartLevel = confirmStartLevel;
+window.closeLevelModal = closeLevelModal;
+window.toggleMusic = toggleMusic;
+window.showHint = showHint;
+window.shareScore = shareScore;
+window.downloadCard = downloadCard;
+window.nextLevel = nextLevel;
+window.restartLevel = restartLevel;
+window.showMap = showMap;
+
+</script>
+</body>
+</html>
